@@ -35,7 +35,7 @@ NVCCFLAGS = -O3 $(INCFLAG)   $(GENCODE_FLAGS) --ptxas-options=-v -lineinfo  -std
 #NVCCFLAGS = -G -g $(INCFLAG)   $(GENCODE_FLAGS) --ptxas-options=-v -lineinfo  -std=c++11
 
 NVCCFLAGS += -Xcompiler="-ftree-vectorizer-verbose=5 -ftree-vectorize "#-fopt-info-vec-missed"
-NVCCFLAGS += -target-cpu-arch=${ARCH} --machine=${BITS} -ccbin=${NVCC_C}
+#NVCCFLAGS += -target-cpu-arch=${ARCH} --machine=${BITS} -ccbin=${NVCC_C}
 # this will put ptx code in the .o file
 #NVCCFLAGS +=--source-in-ptx -ptx
 
@@ -49,10 +49,11 @@ CXXFLAGS =  $(INCFLAG) -std=c++11
 %.o: %.cu
 	$(NVCC) $(NVCCFLAGS) -c $< -o $@
 
-all: nbody nbody_nothrust mtest stest
+#all: nbody nbody_nothrust mtest stest
+all: nbody nbody_nothrust nbody_nothrust2
 
-mtest: mtest.o
-	$(NVCC) $(NVCCFLAGS) -ltbb $^ -o $@ 
+#mtest: mtest.o
+#	$(NVCC) $(NVCCFLAGS) -ltbb $^ -o $@ 
 
 mtest2: mtest2.o
 	$(CXX) $(CXXFLAGS) $^ -o $@ 
@@ -61,6 +62,8 @@ mtest2: mtest2.o
 nbody: nbody.o
 	$(NVCC) $(NVCCFLAGS) $^ -o $@ 
 nbody_nothrust: nbody_nothrust.o
+	$(NVCC) $(NVCCFLAGS) $^ -o $@ 
+nbody_nothrust2: nbody_nothrust2.o
 	$(NVCC) $(NVCCFLAGS) $^ -o $@ 
 
 nbody_unified: nbody_unified.o
@@ -74,8 +77,8 @@ m2: m2.o
 
 ROOTF="-I$(shell root-config --incdir)"
 #NVCCFLAGS += $(ROOTF)
-stest: stest.o
-	$(NVCC) $(NVCCFLAGS)  -ltbb $^ -o $@ 
+#stest: stest.o
+#	$(NVCC) $(NVCCFLAGS)  -ltbb $^ -o $@ 
 
 clean:
 	$(RM) *.o *~ 
@@ -85,10 +88,11 @@ depend:
 
 # DO NOT DELETE
 
-mtest.o: Time.hh Matriplex.h
+#mtest.o: Time.hh Matriplex.h
 nbody.o: timer.h cuda_math.h
-nbody_nothrust.o: CudaMath.h
+nbody_nothrust.o: CudaMath.h CudaMathd.h
+nbody_nothrust2.o: CudaMath.h
 nbody_unified.o: CudaMath.h
-stest.o: Time.hh Matriplex.h SMatrix.h ./SMatrix.icc
+#stest.o: Time.hh Matriplex.h SMatrix.h ./SMatrix.icc
 mtest2.o: Time.hh Matriplex.h
 SMatrix.o: ./SMatrix.icc

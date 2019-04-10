@@ -42,7 +42,7 @@ inline void gpuAssert(cudaError_t code, const char *file, int line,
 const int width  = 512;
 const int height = 512;
 
-//__global__ void setParticles(double4 * pos1,double4 * pos2, double4 * vel , int* vars){
+//__global__ void setParticles(float4 * pos1,float4 * pos2, float4 * vel , int* vars){
 //
 //    int nthreads = vars[0];
 //    int nblocks = vars[1];
@@ -109,20 +109,20 @@ const int height = 512;
 //
 //	//}
 //      //}
-//      pos2[tid] = make_double4(0.f,0.f,0.f,0.f);
-//      vel[tid]  = make_double4(0.f,0.f,0.f,0.f);
+//      pos2[tid] = make_float4(0.f,0.f,0.f,0.f);
+//      vel[tid]  = make_float4(0.f,0.f,0.f,0.f);
 //	tid += blockDim.x*gridDim.x;
 //    }
 //}
-__global__ void nbody_kern(double4 * __restrict__ pos_old,
-			   double4 * __restrict__ pos_new,
-			   double4 * __restrict__ vel,
+__global__ void nbody_kern(float4 * __restrict__ pos_old,
+			   float4 * __restrict__ pos_new,
+			   float4 * __restrict__ vel,
 			   int nparticle ) 
 {
   const float dt1 = 0.001f; //time per step
   const float eps = 0.001f;// small epsilon
   //const float eps = 0.1f;// small epsilon
-  const double4 dt = make_double4(dt1,dt1,dt1,0.0f);
+  const float4 dt = make_float4(dt1,dt1,dt1,0.0f);
 
   // removing these saves a register
   //const int nt = blockDim.x;
@@ -133,13 +133,13 @@ __global__ void nbody_kern(double4 * __restrict__ pos_old,
 
   while(gti < nparticle){
 	//get p and v at this index
-  double4 p = pos_old[gti];
-  double4 v = vel[gti];
-  double4 a = make_double4(0.0f,0.0f,0.0f,0.0f);
+  float4 p = pos_old[gti];
+  float4 v = vel[gti];
+  float4 a = make_float4(0.0f,0.0f,0.0f,0.0f);
   //const int ti = threadIdx.x;
-  //__shared__ double4 pblock[NTHREADS];
+  //__shared__ float4 pblock[NTHREADS];
   // this makes the shared block external with size configurable at runtime
-  extern __shared__ double4 pblock[];
+  extern __shared__ float4 pblock[];
 
   for(short jb=0; jb < gridDim.x; ++jb) { //for each block. short saves a register.
 
@@ -148,8 +148,8 @@ __global__ void nbody_kern(double4 * __restrict__ pos_old,
 
 #pragma unroll 16  // turn on unrolling
     for(short j=0; j<blockDim.x; ++j ) { // loop over cached particles. short save register?
-      const double4 p2 = pblock[j]; /* Read a cached particle position */
-      const double4 d = p2 - p;
+      const float4 p2 = pblock[j]; /* Read a cached particle position */
+      const float4 d = p2 - p;
       const float invr = rsqrt(d.x*d.x + d.y*d.y + d.z*d.z + eps );
       float f;
       if (invr > 1){
@@ -188,10 +188,10 @@ void siginthandler(int signal)
 
 void writeDat(const char* fname, void* data, int ndata);
 
-void savestate_less(const char* fname, double4* pos, int nparticle, int nsteps);
-void savestate(const char* fname, double4* pos, double4* vel, int nparticle, 
+void savestate_less(const char* fname, float4* pos, int nparticle, int nsteps);
+void savestate(const char* fname, float4* pos, float4* vel, int nparticle, 
 	       int nsteps);
-void readstate(const char* fname, double4 **pos, double4 **vel, int * nparticle,
+void readstate(const char* fname, float4 **pos, float4 **vel, int * nparticle,
 	       int *nsteps);
 
 
@@ -288,13 +288,13 @@ int main(int argc, char **argv)
 
 
   // create arrays -- host
-  double4 *pos1 = 0;
-  double4 *pos2 = 0;
-  double4 *vel  = 0 ;
+  float4 *pos1 = 0;
+  float4 *pos2 = 0;
+  float4 *vel  = 0 ;
   // create arrays -- device
-  double4 *pos1_d = 0;
-  double4 *pos2_d = 0;
-  double4 *vel_d  = 0 ;
+  float4 *pos1_d = 0;
+  float4 *pos2_d = 0;
+  float4 *vel_d  = 0 ;
   int nstep_start = 0;
   //int max_reinit= 10;
   double reset_time_sum=0;
@@ -310,30 +310,30 @@ int main(int argc, char **argv)
 
 //
 //    srand(42137377L);
-    pos1 = (double4*)malloc(sizeof(double4)*nparticle);
-    pos2 = (double4*)malloc(sizeof(double4)*nparticle);
-    vel  = (double4*)malloc(sizeof(double4)*nparticle);
+    pos1 = (float4*)malloc(sizeof(float4)*nparticle);
+    pos2 = (float4*)malloc(sizeof(float4)*nparticle);
+    vel  = (float4*)malloc(sizeof(float4)*nparticle);
     int vars[5] = {nthreads, nblocks, nstep, max_reinit, nparticle};
     int vars_d[5];
   CUDA_SAFE_CALL(cudaMemcpyAsync(vars_d, vars, sizeof(int), cudaMemcpyHostToDevice));
   //  reset_exe_clock_begin[reinit] = clock();
-  CUDA_SAFE_CALL(cudaMalloc((void **) &pos1_d, sizeof(double4)*nparticle));   // Allocate array on device
-  CUDA_SAFE_CALL(cudaMalloc((void **) &pos2_d, sizeof(double4)*nparticle));   // Allocate array on device
-  CUDA_SAFE_CALL(cudaMalloc((void **) &vel_d,  sizeof(double4)*nparticle));   // Allocate array on device
+  CUDA_SAFE_CALL(cudaMalloc((void **) &pos1_d, sizeof(float4)*nparticle));   // Allocate array on device
+  CUDA_SAFE_CALL(cudaMalloc((void **) &pos2_d, sizeof(float4)*nparticle));   // Allocate array on device
+  CUDA_SAFE_CALL(cudaMalloc((void **) &vel_d,  sizeof(float4)*nparticle));   // Allocate array on device
   CUDA_SAFE_CALL(cudaMalloc((void **) &vars_d,  sizeof(int)));   // Allocate array on device
-//	setParticles<<<nblocks,nthreads,nthreads*sizeof(double4)>>>(pos1_d,pos2_d,vel_d,vars_d);
+//	setParticles<<<nblocks,nthreads,nthreads*sizeof(float4)>>>(pos1_d,pos2_d,vel_d,vars_d);
 }
 
 
   else if ( true && argc == 1||1 ) { // turn off reading in
-    pos1 = (double4*)malloc(sizeof(double4)*nparticle);
-    pos2 = (double4*)malloc(sizeof(double4)*nparticle);
-    vel  = (double4*)malloc(sizeof(double4)*nparticle);
+    pos1 = (float4*)malloc(sizeof(float4)*nparticle);
+    pos2 = (float4*)malloc(sizeof(float4)*nparticle);
+    vel  = (float4*)malloc(sizeof(float4)*nparticle);
     reset_exe_clock_begin[reinit] = clock();
 
-  CUDA_SAFE_CALL(cudaMalloc((void **) &pos1_d, sizeof(double4)*nparticle));   // Allocate array on device
-  CUDA_SAFE_CALL(cudaMalloc((void **) &pos2_d, sizeof(double4)*nparticle));   // Allocate array on device
-  CUDA_SAFE_CALL(cudaMalloc((void **) &vel_d,  sizeof(double4)*nparticle));   // Allocate array on device
+  CUDA_SAFE_CALL(cudaMalloc((void **) &pos1_d, sizeof(float4)*nparticle));   // Allocate array on device
+  CUDA_SAFE_CALL(cudaMalloc((void **) &pos2_d, sizeof(float4)*nparticle));   // Allocate array on device
+  CUDA_SAFE_CALL(cudaMalloc((void **) &vel_d,  sizeof(float4)*nparticle));   // Allocate array on device
   
 
 
@@ -389,26 +389,26 @@ int main(int argc, char **argv)
 
 	//}
       //}
-      pos2[i] = make_double4(0.f,0.f,0.f,0.f);
-      vel[i]  = make_double4(0.f,0.f,0.f,0.f);
+      pos2[i] = make_float4(0.f,0.f,0.f,0.f);
+      vel[i]  = make_float4(0.f,0.f,0.f,0.f);
     }
 
   //Fill the input array with the host allocated starting point data
   //
-  CUDA_SAFE_CALL(cudaMemcpyAsync(pos1_d, pos1, sizeof(double4)*nparticle, cudaMemcpyHostToDevice));
-  CUDA_SAFE_CALL(cudaMemcpyAsync(pos2_d, pos2, sizeof(double4)*nparticle, cudaMemcpyHostToDevice));
-  CUDA_SAFE_CALL(cudaMemcpyAsync(vel_d,  vel,  sizeof(double4)*nparticle, cudaMemcpyHostToDevice));
+  CUDA_SAFE_CALL(cudaMemcpyAsync(pos1_d, pos1, sizeof(float4)*nparticle, cudaMemcpyHostToDevice));
+  CUDA_SAFE_CALL(cudaMemcpyAsync(pos2_d, pos2, sizeof(float4)*nparticle, cudaMemcpyHostToDevice));
+  CUDA_SAFE_CALL(cudaMemcpyAsync(vel_d,  vel,  sizeof(float4)*nparticle, cudaMemcpyHostToDevice));
   }
   else { // read from input file 
     fprintf(stderr, "reading from file %s\n", argv[1]);
     readstate(argv[1], &pos1, &vel, &nparticle, &nstep_start);
     fprintf(stderr, "Found %d particles\n", nparticle);
-    pos2 = (double4*)malloc(sizeof(double4)*nparticle);
+    pos2 = (float4*)malloc(sizeof(float4)*nparticle);
   //Fill the input array with the host allocated starting point data
   //
-  CUDA_SAFE_CALL(cudaMemcpyAsync(pos1_d, pos1, sizeof(double4)*nparticle, cudaMemcpyHostToDevice));
-  CUDA_SAFE_CALL(cudaMemcpyAsync(pos2_d, pos2, sizeof(double4)*nparticle, cudaMemcpyHostToDevice));
-  CUDA_SAFE_CALL(cudaMemcpyAsync(vel_d,  vel,  sizeof(double4)*nparticle, cudaMemcpyHostToDevice));
+  CUDA_SAFE_CALL(cudaMemcpyAsync(pos1_d, pos1, sizeof(float4)*nparticle, cudaMemcpyHostToDevice));
+  CUDA_SAFE_CALL(cudaMemcpyAsync(pos2_d, pos2, sizeof(float4)*nparticle, cudaMemcpyHostToDevice));
+  CUDA_SAFE_CALL(cudaMemcpyAsync(vel_d,  vel,  sizeof(float4)*nparticle, cudaMemcpyHostToDevice));
 
   }
 #ifdef DUMP
@@ -419,22 +419,22 @@ int main(int argc, char **argv)
   int which = 5; //prints this specific particle
   printf("Start: particle %d x=%f, y=%f, z=%f, m=%f\n",
 	 which, pos1[which].x, pos1[which].y, pos1[which].z, pos1[which].w);
-  double4 startpos = pos1[which];
+  float4 startpos = pos1[which];
 
 
-//  CUDA_SAFE_CALL(cudaMalloc((void **) &pos1_d, sizeof(double4)*nparticle));   // Allocate array on device
-//  CUDA_SAFE_CALL(cudaMalloc((void **) &pos2_d, sizeof(double4)*nparticle));   // Allocate array on device
-//  CUDA_SAFE_CALL(cudaMalloc((void **) &vel_d,  sizeof(double4)*nparticle));   // Allocate array on device
+//  CUDA_SAFE_CALL(cudaMalloc((void **) &pos1_d, sizeof(float4)*nparticle));   // Allocate array on device
+//  CUDA_SAFE_CALL(cudaMalloc((void **) &pos2_d, sizeof(float4)*nparticle));   // Allocate array on device
+//  CUDA_SAFE_CALL(cudaMalloc((void **) &vel_d,  sizeof(float4)*nparticle));   // Allocate array on device
 //  
 //
 //  //Fill the input array with the host allocated starting point data
 //  //
-//  CUDA_SAFE_CALL(cudaMemcpyAsync(pos1_d, pos1, sizeof(double4)*nparticle, cudaMemcpyHostToDevice));
-//  CUDA_SAFE_CALL(cudaMemcpyAsync(pos2_d, pos2, sizeof(double4)*nparticle, cudaMemcpyHostToDevice));
-//  CUDA_SAFE_CALL(cudaMemcpyAsync(vel_d,  vel,  sizeof(double4)*nparticle, cudaMemcpyHostToDevice));
+//  CUDA_SAFE_CALL(cudaMemcpyAsync(pos1_d, pos1, sizeof(float4)*nparticle, cudaMemcpyHostToDevice));
+//  CUDA_SAFE_CALL(cudaMemcpyAsync(pos2_d, pos2, sizeof(float4)*nparticle, cudaMemcpyHostToDevice));
+//  CUDA_SAFE_CALL(cudaMemcpyAsync(vel_d,  vel,  sizeof(float4)*nparticle, cudaMemcpyHostToDevice));
 
   // just to be sure I see what's going on
-//  bzero(pos1,sizeof(double4)*nparticle);
+//  bzero(pos1,sizeof(float4)*nparticle);
 
 
 
@@ -462,10 +462,10 @@ int main(int argc, char **argv)
     for (int k = 0; k < nburst; k++) {
       if ( k%2==0 ) {
 	// third argument is the size of the shared memory space
-	nbody_kern<<<nblocks,nthreads,nthreads*sizeof(double4)>>>(pos1_d,
+	nbody_kern<<<nblocks,nthreads,nthreads*sizeof(float4)>>>(pos1_d,
 								 pos2_d,vel_d,nparticle);
       } else {
-	nbody_kern<<<nblocks,nthreads,nthreads*sizeof(double4)>>>(pos2_d,
+	nbody_kern<<<nblocks,nthreads,nthreads*sizeof(float4)>>>(pos2_d,
 								 pos1_d,vel_d,nparticle);
       }
     } // nburst
@@ -491,8 +491,8 @@ int main(int argc, char **argv)
 
     //Read back the results that were computed on the device
     //
-    CUDA_SAFE_CALL(cudaMemcpyAsync(pos1, pos1_d, sizeof(double4)*nparticle, cudaMemcpyDeviceToHost));
-    CUDA_SAFE_CALL(cudaMemcpyAsync(pos2, pos2_d, sizeof(double4)*nparticle, cudaMemcpyDeviceToHost));
+    CUDA_SAFE_CALL(cudaMemcpyAsync(pos1, pos1_d, sizeof(float4)*nparticle, cudaMemcpyDeviceToHost));
+    CUDA_SAFE_CALL(cudaMemcpyAsync(pos2, pos2_d, sizeof(float4)*nparticle, cudaMemcpyDeviceToHost));
 
 //tres-savestate
   //savestate_less("current.dat", pos1, nparticle, iter+nstep_start);
@@ -500,16 +500,16 @@ int main(int argc, char **argv)
     if (iter%25==0 ) {    
 
 
-      // double4 ptotal = thrust::reduce(d_vel.begin(), d_vel.end(), make_double4(0.,0.,0.,0.),
+      // float4 ptotal = thrust::reduce(d_vel.begin(), d_vel.end(), make_float4(0.,0.,0.,0.),
       // 				     f2());
 
       // get velocities
-      CUDA_SAFE_CALL(cudaMemcpy(vel, vel_d, sizeof(double4)*nparticle, cudaMemcpyDeviceToHost));
+      CUDA_SAFE_CALL(cudaMemcpy(vel, vel_d, sizeof(float4)*nparticle, cudaMemcpyDeviceToHost));
       printf("End %d:   vel %d x=%f, y=%f, z=%f, m=%f\n",
       	     iter, which, vel[which].x, vel[which].y, vel[which].z, vel[which].w);
 
       // calculate total momentum
-      double4 ptotal = make_double4(0.,0.,0.,0.);
+      float4 ptotal = make_float4(0.,0.,0.,0.);
       for ( int i = 0; i < nparticle; ++i ) {
       	ptotal.x += pos1[i].w*vel[i].x;
       	ptotal.y += pos1[i].w*vel[i].y;
@@ -517,7 +517,7 @@ int main(int argc, char **argv)
       }
       float ptot = sqrt(ptotal.x*ptotal.x+ptotal.y*ptotal.y+ptotal.z*ptotal.z);
       printf("\t\tptot = %5.3f\n", ptot);
-      fprintf(pFile2,"double4 %d %d %d %d %f %f\n", nparticle, iter,nblocks,nthreads, ptot, tavg_0);
+      fprintf(pFile2,"float4 %d %d %d %d %f %f\n", nparticle, iter,nblocks,nthreads, ptot, tavg_0);
     }
 
    bool show_pos = false;
@@ -528,9 +528,9 @@ int main(int argc, char **argv)
 	   which, pos2[which].x, pos2[which].y, pos2[which].z, pos2[which].w);
 
 
-    double4 endpos = pos1[which];
+    float4 endpos = pos1[which];
   
-    double4 sep = make_double4(endpos.x-startpos.x,endpos.y-startpos.y,endpos.z-startpos.z,0);
+    float4 sep = make_float4(endpos.x-startpos.x,endpos.y-startpos.y,endpos.z-startpos.z,0);
     float distance = sqrt(sep.x*sep.x + sep.y*sep.y + sep.z*sep.z);
     printf("Distance travelled = %g\n", distance);
 }
@@ -545,7 +545,7 @@ int main(int argc, char **argv)
   cudaEventDestroy( stop );
 
   // need this for the final dump
-  CUDA_SAFE_CALL(cudaMemcpy(vel, vel_d, sizeof(double4)*nparticle, cudaMemcpyDeviceToHost));
+  CUDA_SAFE_CALL(cudaMemcpy(vel, vel_d, sizeof(float4)*nparticle, cudaMemcpyDeviceToHost));
 
   double tavg = tavg_0/(iter);
   double trms = sqrt((tsqu_0- tavg_0*tavg_0/(1.*iter))/(iter-1.0));
@@ -585,7 +585,7 @@ int main(int argc, char **argv)
   double full_exe_elapsed = (double)(full_exe_clock_end-full_exe_clock_begin)/CLOCKS_PER_SEC;
   printf("Total Execution  %g s\n", full_exe_elapsed);
   printf("Average Reset Execution  Time %g s\n", reset_time_sum/max_reinit);
-  fprintf(pFile1,"1 %d %d %d %d %d %g %g %g 0\n",max_reinit, nparticle, nstep,nblocks,nthreads, full_exe_elapsed, reset_time_sum, reset_time_sum/max_reinit);
+  fprintf(pFile1,"1 %d %d %d %d %d %g %g %g\n",max_reinit, nparticle, nstep,nblocks,nthreads, full_exe_elapsed, reset_time_sum, reset_time_sum/max_reinit);
   return 0;
 }
 
@@ -654,7 +654,7 @@ void writeDat(const char* fname, void* data, int ndata)
     }
   }
 
-  double4 *cdata = (double4*)data;
+  float4 *cdata = (float4*)data;
   int cnt = 0;
   for ( int i = 0; i < ndata; ++i ) {
     int x = int(cdata[i].x+0.5); //x += width/2; //x = x%width;
@@ -684,7 +684,7 @@ void writeDat(const char* fname, void* data, int ndata)
 
 }
 
-void savestate_less(const char* fname, double4* pos, int nparticle,
+void savestate_less(const char* fname, float4* pos, int nparticle,
 	       int nsteps)
 {
   FILE* fout = fopen(fname, "a");
@@ -701,7 +701,7 @@ void savestate_less(const char* fname, double4* pos, int nparticle,
   fclose(fout);
   return;
 }
-void savestate(const char* fname, double4* pos, double4* vel, int nparticle,
+void savestate(const char* fname, float4* pos, float4* vel, int nparticle,
 	       int nsteps)
 {
   FILE* fout = fopen(fname, "a");
@@ -720,7 +720,7 @@ void savestate(const char* fname, double4* pos, double4* vel, int nparticle,
   return;
 }
 
-void readstate(const char* fname, double4 **pos, double4 **vel, int * nparticle,
+void readstate(const char* fname, float4 **pos, float4 **vel, int * nparticle,
 	       int *nsteps)
 {
   FILE* fin = fopen(fname, "r");
@@ -732,8 +732,8 @@ void readstate(const char* fname, double4 **pos, double4 **vel, int * nparticle,
   fscanf(fin, "%d", nsteps);
   int n = *nparticle; // just easier to type
   printf("This many particles in %s: %d, %d steps\n", fname, n, *nsteps);
-  *pos = (double4*)malloc(n*sizeof(double4));
-  *vel = (double4*)malloc(n*sizeof(double4));
+  *pos = (float4*)malloc(n*sizeof(float4));
+  *vel = (float4*)malloc(n*sizeof(float4));
   //
   int i = 0;
   while ( !feof(fin) && (i < n) ) {
